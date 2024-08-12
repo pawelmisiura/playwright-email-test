@@ -15,7 +15,6 @@ pipeline {
         stage('Run Tests') {
             steps {
                 script {
-                    // Run Playwright tests and write output to file
                     def exitCode = sh(script: 'npx playwright test --reporter=list > test-output.txt 2>&1', returnStatus: true)
                     env.TEST_OUTPUT = readFile('test-output.txt')
                     env.TEST_EXIT_CODE = exitCode.toString()
@@ -38,7 +37,9 @@ pipeline {
         failure {
             script {
                 def failedTests = parseFailedTests(env.TEST_OUTPUT)
+                echo "Failed Tests: ${failedTests}"
                 def teamFailures = groupTestsByTeam(failedTests)
+                echo "Team Failures: ${teamFailures}"
                 teamFailures.each { team, tests ->
                     sendEmailToTeam(team, tests)
                 }
@@ -49,16 +50,16 @@ pipeline {
 
 def parseFailedTests(output) {
     def failedTests = []
-    def currentTag = ""
+    def currentTeam = ""
     def lines = output.split('\n')
     lines.each { line ->
-        def tagMatcher = line =~ /describe\(".*", \{ tag: "(.*)" \}/
-        if (tagMatcher.find()) {
-            currentTag = tagMatcher.group(1)
+        def teamMatcher = line =~ /Running \d+ tests using \d+ worker(s)?\s+\[(.+)\]/
+        if (teamMatcher.find()) {
+            currentTeam = teamMatcher.group(2)
         }
-        def failedTestMatcher = line =~ /✘\s+(\d+)\s+\[.*\]\s+›\s+(.*)\s+\(\d+.*\)/
+        def failedTestMatcher = line =~ /✘\s+(\d+)\s+\[.*\]\s+›\s+(.*?)\s+›\s+(.*?)\s+\(\d+.*\)/
         if (failedTestMatcher.find()) {
-            failedTests << [name: failedTestMatcher.group(2), team: currentTag]
+            failedTests << [name: "${failedTestMatcher.group(2)} › ${failedTestMatcher.group(3)}", team: currentTeam]
         }
     }
     return failedTests
@@ -80,7 +81,6 @@ def sendEmailToTeam(team, tests) {
     def body = "The following tests failed for ${team}:\n${tests.join('\n')}"
     def to = "${team}@example.com"
     
-    // Print email content to console
     echo "Preparing to send email:"
     echo "To: ${to}"
     echo "Subject: ${subject}"
