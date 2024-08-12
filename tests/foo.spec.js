@@ -1,7 +1,7 @@
 // @ts-check
 const { test, expect } = require("@playwright/test");
 
-test.describe("foo tests", { tag: "@foo" }, () => {
+test.describe("@foo playwright tests", () => {
   test("has title", async ({ page }) => {
     await page.goto("https://playwright.dev/");
 

@@ -12,19 +12,6 @@ pipeline {
                 sh 'npx playwright install'
             }
         }
-        stage('Extract Tags') {
-            steps {
-                script {
-                    env.TEST_TAGS = sh(script: '''
-                        for file in tests/*.spec.js; do
-                            tag=$(grep 'test.describe.*tag:' "$file" | sed -E 's/.*tag: "([^"]+)".*/\\1/')
-                            echo "$file:$tag"
-                        done
-                    ''', returnStdout: true).trim()
-                    echo "Extracted tags: ${env.TEST_TAGS}"
-                }
-            }
-        }
         stage('Run Tests') {
             steps {
                 script {
@@ -49,7 +36,7 @@ pipeline {
         }
         failure {
             script {
-                def failedTests = parseFailedTests(env.TEST_OUTPUT, env.TEST_TAGS)
+                def failedTests = parseFailedTests(env.TEST_OUTPUT)
                 echo "Failed Tests: ${failedTests}"
                 def teamFailures = groupTestsByTeam(failedTests)
                 echo "Team Failures: ${teamFailures}"
@@ -61,43 +48,33 @@ pipeline {
     }
 }
 
-def parseFailedTests(output, tags) {
+def parseFailedTests(output) {
     def failedTests = []
-    def tagMap = [:]
-    tags.split('\n').each { 
-        def parts = it.split(':')
-        if (parts.size() == 2) {
-            tagMap[parts[0].split('/')[-1]] = parts[1]
-        }
-    }
+    def currentTeam = "unknown"
     def lines = output.split('\n')
     lines.each { line ->
-        def failedTestMatcher = line =~ /✘\s+\d+\s+\[chromium\]\s+›\s+(.*?):.*?›\s+(.*?)\s+›\s+(.*?)\s+\(\d+.*\)/
+        def teamMatcher = line =~ /\[chromium\] › .*? › (@\w+)/
+        if (teamMatcher.find()) {
+            currentTeam = teamMatcher.group(1)
+        }
+        def failedTestMatcher = line =~ /✘\s+\d+\s+\[chromium\]\s+›\s+(.*?)\s+›\s+(.*?)\s+›\s+(.*?)\s+\(\d+.*\)/
         if (failedTestMatcher.find()) {
             def fileName = failedTestMatcher.group(1)
             def testSuite = failedTestMatcher.group(2)
             def testName = failedTestMatcher.group(3)
-            def team = tagMap[fileName] ?: 'unknown'
-            failedTests << [name: "${fileName} › ${testSuite} › ${testName}", team: team]
+            failedTests << [name: "${fileName} › ${testSuite} › ${testName}", team: currentTeam]
         }
     }
     return failedTests
 }
 
 def groupTestsByTeam(failedTests) {
-    def teamFailures = [:]
-    failedTests.each { test ->
-        if (!teamFailures.containsKey(test.team)) {
-            teamFailures[test.team] = []
-        }
-        teamFailures[test.team] << test.name
-    }
-    return teamFailures
+    return failedTests.groupBy { it.team }
 }
 
 def sendEmailToTeam(team, tests) {
     def subject = "Test Failures for ${team}"
-    def body = "The following tests failed for ${team}:\n${tests.join('\n')}"
+    def body = "The following tests failed for ${team}:\n${tests.collect { it.name }.join('\n')}"
     def to = "${team.replaceAll('@', '')}@example.com"
     
     echo "Preparing to send email:"
