@@ -94,3 +94,5 @@ def sendEmailToTeam(team, tests) {
         body: "The following tests failed for ${team}:\n${tests.join('\n')}",
         to: "${team}@example.com",
         mimeType: 'text/plain'
+    )
+}
