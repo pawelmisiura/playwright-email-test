@@ -50,19 +50,13 @@ pipeline {
 
 def parseFailedTests(output) {
     def failedTests = []
-    def currentTeam = "unknown"
-    def lines = output.split('\n')
-    lines.each { line ->
-        def teamMatcher = line =~ /\[chromium\] › .*? › (@\w+)/
-        if (teamMatcher.find()) {
-            currentTeam = teamMatcher.group(1)
-        }
-        def failedTestMatcher = line =~ /✘\s+\d+\s+\[chromium\]\s+›\s+(.*?)\s+›\s+(.*?)\s+›\s+(.*?)\s+\(\d+.*\)/
-        if (failedTestMatcher.find()) {
-            def fileName = failedTestMatcher.group(1)
-            def testSuite = failedTestMatcher.group(2)
-            def testName = failedTestMatcher.group(3)
-            failedTests << [name: "${fileName} › ${testSuite} › ${testName}", team: currentTeam]
+    output.eachLine { line ->
+        def matcher = line =~ /✘\s+\d+\s+\[chromium\]\s+›\s+(.*?)\s+›\s+(@\w+).*?›\s+(.*?)\s+\(\d+.*\)/
+        if (matcher.find()) {
+            def fileName = matcher.group(1)
+            def team = matcher.group(2)
+            def testName = matcher.group(3)
+            failedTests << [name: "${fileName} › ${testName}", team: team]
         }
     }
     return failedTests
