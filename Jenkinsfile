@@ -79,7 +79,7 @@ def sendEmailToTeam(team, tests) {
     emailext (
         subject: "Test Failures for ${team}",
         body: "The following tests failed for ${team}:\n${tests.join('\n')}",
-        to: "${team}@example.com",
+        to: "pawelmisiura1@gmail.com",
         mimeType: 'text/plain'
     )
 }
