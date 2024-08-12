@@ -15,18 +15,16 @@ pipeline {
         stage('Run Tests') {
             steps {
                 script {
-                    // Run Playwright tests and capture output
-                    def testResult = sh(script: 'npx playwright test --reporter=list', returnStatus: true, returnStdout: true)
-                    env.TEST_OUTPUT = testResult.toString()
-                    env.TEST_EXIT_CODE = testResult
+                    // Run Playwright tests and write output to file
+                    def exitCode = sh(script: 'npx playwright test --reporter=list > test-output.txt 2>&1', returnStatus: true)
+                    env.TEST_OUTPUT = readFile('test-output.txt')
+                    env.TEST_EXIT_CODE = exitCode.toString()
 
-                    // Print the captured output for debugging
-                    echo "Test Output: ${env.TEST_OUTPUT}"
                     echo "Test Exit Code: ${env.TEST_EXIT_CODE}"
+                    echo "First 1000 characters of Test Output: ${env.TEST_OUTPUT.take(1000)}"
 
-                    // Fail the build if tests failed
-                    if (env.TEST_EXIT_CODE != '0') {
-                        error "Tests failed with exit code ${env.TEST_EXIT_CODE}"
+                    if (exitCode != 0) {
+                        error "Tests failed with exit code ${exitCode}"
                     }
                 }
             }
@@ -35,25 +33,14 @@ pipeline {
     
     post {
         always {
-            script {
-                if (env.TEST_OUTPUT) {
-                    writeFile file: 'test-output.txt', text: env.TEST_OUTPUT
-                    archiveArtifacts artifacts: 'test-output.txt', fingerprint: true
-                } else {
-                    echo "No test output to archive"
-                }
-            }
+            archiveArtifacts artifacts: 'test-output.txt', fingerprint: true
         }
         failure {
             script {
-                if (env.TEST_OUTPUT) {
-                    def failedTests = parseFailedTests(env.TEST_OUTPUT)
-                    def teamFailures = groupTestsByTeam(failedTests)
-                    teamFailures.each { team, tests ->
-                        sendEmailToTeam(team, tests)
-                    }
-                } else {
-                    echo "No test output available for failure analysis"
+                def failedTests = parseFailedTests(env.TEST_OUTPUT)
+                def teamFailures = groupTestsByTeam(failedTests)
+                teamFailures.each { team, tests ->
+                    sendEmailToTeam(team, tests)
                 }
             }
         }
