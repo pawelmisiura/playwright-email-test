@@ -6,37 +6,39 @@ pipeline {
     }
     
     stages {
-        stage('e2e-tests') {
+        stage('Install Dependencies') {
             steps {
                 sh 'npm ci'
                 sh 'npx playwright install'
+            }
+        }
+        stage('Run Tests') {
+            steps {
                 script {
-                    try {
-                        // Run Playwright tests and capture output
-                        def testOutput = sh(script: 'npx playwright test --reporter=list', returnStdout: true)
-                        
-                        // Parse output to find failed tests and their team tags
-                        def failedTests = parseFailedTests(testOutput)
-                        
-                        // Group failed tests by team
-                        def teamFailures = groupTestsByTeam(failedTests)
-                        
-                        // Archive test results
-                        writeFile file: 'test-output.txt', text: testOutput
-                        archiveArtifacts artifacts: 'test-output.txt', fingerprint: true
-
-                        // Send emails to teams with failures
-                        if (!teamFailures.isEmpty()) {
-                            teamFailures.each { team, tests ->
-                                sendEmailToTeam(team, tests)
-                            }
-                        } else {
-                            echo "All tests passed. No emails sent."
-                        }
-                    } catch (Exception e) {
-                        currentBuild.result = 'FAILURE'
-                        error("Test execution failed: ${e.message}")
-                    }
+                    // Run Playwright tests and capture output
+                    env.TEST_OUTPUT = sh(script: 'npx playwright test --reporter=list', returnStdout: true)
+                }
+            }
+        }
+    }
+    
+    post {
+        always {
+            // Archive test results
+            writeFile file: 'test-output.txt', text: env.TEST_OUTPUT
+            archiveArtifacts artifacts: 'test-output.txt', fingerprint: true
+        }
+        failure {
+            script {
+                // Parse output to find failed tests and their team tags
+                def failedTests = parseFailedTests(env.TEST_OUTPUT)
+                
+                // Group failed tests by team
+                def teamFailures = groupTestsByTeam(failedTests)
+                
+                // Send emails to teams with failures
+                teamFailures.each { team, tests ->
+                    sendEmailToTeam(team, tests)
                 }
             }
         }
