@@ -50,16 +50,19 @@ pipeline {
 
 def parseFailedTests(output) {
     def failedTests = []
-    def currentTeam = ""
+    def currentTag = ""
     def lines = output.split('\n')
     lines.each { line ->
-        def teamMatcher = line =~ /Running \d+ tests using \d+ worker(s)?\s+\[(.+)\]/
-        if (teamMatcher.find()) {
-            currentTeam = teamMatcher.group(2)
+        def tagMatcher = line =~ /describe\(".*", \{ tag: "(.*)" \}/
+        if (tagMatcher.find()) {
+            currentTag = tagMatcher.group(1)
         }
-        def failedTestMatcher = line =~ /✘\s+(\d+)\s+\[.*\]\s+›\s+(.*?)\s+›\s+(.*?)\s+\(\d+.*\)/
+        def failedTestMatcher = line =~ /✘\s+\d+\s+\[chromium\]\s+›\s+(.*?):.*?›\s+(.*?)\s+›\s+(.*?)\s+\(\d+.*\)/
         if (failedTestMatcher.find()) {
-            failedTests << [name: "${failedTestMatcher.group(2)} › ${failedTestMatcher.group(3)}", team: currentTeam]
+            def fileName = failedTestMatcher.group(1)
+            def testSuite = failedTestMatcher.group(2)
+            def testName = failedTestMatcher.group(3)
+            failedTests << [name: "${fileName} › ${testSuite} › ${testName}", team: currentTag]
         }
     }
     return failedTests
@@ -79,7 +82,7 @@ def groupTestsByTeam(failedTests) {
 def sendEmailToTeam(team, tests) {
     def subject = "Test Failures for ${team}"
     def body = "The following tests failed for ${team}:\n${tests.join('\n')}"
-    def to = "${team}@example.com"
+    def to = "${team.replaceAll('@', '')}@example.com"
     
     echo "Preparing to send email:"
     echo "To: ${to}"
