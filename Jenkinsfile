@@ -17,6 +17,13 @@ pipeline {
                 script {
                     // Run Playwright tests and capture output
                     env.TEST_OUTPUT = sh(script: 'npx playwright test --reporter=list', returnStdout: true)
+                    
+                    // Add a check to see if we captured any output
+                    if (env.TEST_OUTPUT?.trim()) {
+                        echo "Test output captured successfully"
+                    } else {
+                        echo "Warning: No test output captured"
+                    }
                 }
             }
         }
@@ -24,21 +31,25 @@ pipeline {
     
     post {
         always {
-            // Archive test results
-            writeFile file: 'test-output.txt', text: env.TEST_OUTPUT
-            archiveArtifacts artifacts: 'test-output.txt', fingerprint: true
+            script {
+                if (env.TEST_OUTPUT?.trim()) {
+                    writeFile file: 'test-output.txt', text: env.TEST_OUTPUT
+                    archiveArtifacts artifacts: 'test-output.txt', fingerprint: true
+                } else {
+                    echo "No test output to archive"
+                }
+            }
         }
         failure {
             script {
-                // Parse output to find failed tests and their team tags
-                def failedTests = parseFailedTests(env.TEST_OUTPUT)
-                
-                // Group failed tests by team
-                def teamFailures = groupTestsByTeam(failedTests)
-                
-                // Send emails to teams with failures
-                teamFailures.each { team, tests ->
-                    sendEmailToTeam(team, tests)
+                if (env.TEST_OUTPUT?.trim()) {
+                    def failedTests = parseFailedTests(env.TEST_OUTPUT)
+                    def teamFailures = groupTestsByTeam(failedTests)
+                    teamFailures.each { team, tests ->
+                        sendEmailToTeam(team, tests)
+                    }
+                } else {
+                    echo "No test output available for failure analysis"
                 }
             }
         }
@@ -46,6 +57,10 @@ pipeline {
 }
 
 def parseFailedTests(output) {
+    if (!output?.trim()) {
+        echo "No output to parse for failed tests"
+        return []
+    }
     def failedTests = []
     def currentTag = ""
     def lines = output.split('\n')
@@ -77,7 +92,7 @@ def sendEmailToTeam(team, tests) {
     emailext (
         subject: "Test Failures for ${team}",
         body: "The following tests failed for ${team}:\n${tests.join('\n')}",
-        to: "pawelmisiura1@gmail.com",
+        to: "${team}@example.com",
         mimeType: 'text/plain'
     )
 }
