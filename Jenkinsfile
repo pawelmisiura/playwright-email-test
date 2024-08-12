@@ -12,6 +12,19 @@ pipeline {
                 sh 'npx playwright install'
             }
         }
+        stage('Extract Tags') {
+            steps {
+                script {
+                    env.TEST_TAGS = sh(script: '''
+                        for file in tests/*.spec.js; do
+                            tag=$(grep 'test.describe.*tag:' "$file" | sed -E 's/.*tag: "([^"]+)".*/\\1/')
+                            echo "$file:$tag"
+                        done
+                    ''', returnStdout: true).trim()
+                    echo "Extracted tags: ${env.TEST_TAGS}"
+                }
+            }
+        }
         stage('Run Tests') {
             steps {
                 script {
@@ -36,7 +49,7 @@ pipeline {
         }
         failure {
             script {
-                def failedTests = parseFailedTests(env.TEST_OUTPUT)
+                def failedTests = parseFailedTests(env.TEST_OUTPUT, env.TEST_TAGS)
                 echo "Failed Tests: ${failedTests}"
                 def teamFailures = groupTestsByTeam(failedTests)
                 echo "Team Failures: ${teamFailures}"
@@ -48,21 +61,24 @@ pipeline {
     }
 }
 
-def parseFailedTests(output) {
+def parseFailedTests(output, tags) {
     def failedTests = []
-    def currentTag = ""
+    def tagMap = [:]
+    tags.split('\n').each { 
+        def parts = it.split(':')
+        if (parts.size() == 2) {
+            tagMap[parts[0].split('/')[-1]] = parts[1]
+        }
+    }
     def lines = output.split('\n')
     lines.each { line ->
-        def tagMatcher = line =~ /describe\(".*", \{ tag: "(.*)" \}/
-        if (tagMatcher.find()) {
-            currentTag = tagMatcher.group(1)
-        }
         def failedTestMatcher = line =~ /✘\s+\d+\s+\[chromium\]\s+›\s+(.*?):.*?›\s+(.*?)\s+›\s+(.*?)\s+\(\d+.*\)/
         if (failedTestMatcher.find()) {
             def fileName = failedTestMatcher.group(1)
             def testSuite = failedTestMatcher.group(2)
             def testName = failedTestMatcher.group(3)
-            failedTests << [name: "${fileName} › ${testSuite} › ${testName}", team: currentTag]
+            def team = tagMap[fileName] ?: 'unknown'
+            failedTests << [name: "${fileName} › ${testSuite} › ${testName}", team: team]
         }
     }
     return failedTests
