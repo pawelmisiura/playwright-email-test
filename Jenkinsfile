@@ -76,10 +76,20 @@ def groupTestsByTeam(failedTests) {
 }
 
 def sendEmailToTeam(team, tests) {
+    def subject = "Test Failures for ${team}"
+    def body = "The following tests failed for ${team}:\n${tests.join('\n')}"
+    def to = "${team}@example.com"
+    
+    // Print email content to console
+    echo "Preparing to send email:"
+    echo "To: ${to}"
+    echo "Subject: ${subject}"
+    echo "Body:\n${body}"
+    
     emailext (
-        subject: "Test Failures for ${team}",
-        body: "The following tests failed for ${team}:\n${tests.join('\n')}",
-        to: "pawelmisiura1@gmail.com",
+        subject: subject,
+        body: body,
+        to: to,
         mimeType: 'text/plain'
     )
 }
