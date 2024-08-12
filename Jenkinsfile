@@ -16,14 +16,10 @@ pipeline {
             steps {
                 script {
                     // Run Playwright tests and capture output
-                    env.TEST_OUTPUT = sh(script: 'npx playwright test --reporter=list', returnStdout: true)
+                    env.TEST_OUTPUT = sh(script: 'npx playwright test --reporter=list', returnStatus: true, returnStdout: true)
                     
-                    // Add a check to see if we captured any output
-                    if (env.TEST_OUTPUT?.trim()) {
-                        echo "Test output captured successfully"
-                    } else {
-                        echo "Warning: No test output captured"
-                    }
+                    // Print the captured output for debugging
+                    echo "Test Output: ${env.TEST_OUTPUT}"
                 }
             }
         }
@@ -32,7 +28,7 @@ pipeline {
     post {
         always {
             script {
-                if (env.TEST_OUTPUT?.trim()) {
+                if (env.TEST_OUTPUT != null) {
                     writeFile file: 'test-output.txt', text: env.TEST_OUTPUT
                     archiveArtifacts artifacts: 'test-output.txt', fingerprint: true
                 } else {
@@ -42,7 +38,7 @@ pipeline {
         }
         failure {
             script {
-                if (env.TEST_OUTPUT?.trim()) {
+                if (env.TEST_OUTPUT != null) {
                     def failedTests = parseFailedTests(env.TEST_OUTPUT)
                     def teamFailures = groupTestsByTeam(failedTests)
                     teamFailures.each { team, tests ->
@@ -57,10 +53,6 @@ pipeline {
 }
 
 def parseFailedTests(output) {
-    if (!output?.trim()) {
-        echo "No output to parse for failed tests"
-        return []
-    }
     def failedTests = []
     def currentTag = ""
     def lines = output.split('\n')
@@ -69,9 +61,9 @@ def parseFailedTests(output) {
         if (tagMatcher.find()) {
             currentTag = tagMatcher.group(1)
         }
-        def failedTestMatcher = line =~ /✘\s+(.+)\s+\(\d+ms\)/
+        def failedTestMatcher = line =~ /✘\s+(\d+)\s+\[.*\]\s+›\s+(.*)\s+\(\d+.*\)/
         if (failedTestMatcher.find()) {
-            failedTests << [name: failedTestMatcher.group(1), team: currentTag]
+            failedTests << [name: failedTestMatcher.group(2), team: currentTag]
         }
     }
     return failedTests
@@ -92,7 +84,7 @@ def sendEmailToTeam(team, tests) {
     emailext (
         subject: "Test Failures for ${team}",
         body: "The following tests failed for ${team}:\n${tests.join('\n')}",
-        to: "${team}@example.com",
+        to: "pawelmisiura1@gmail.com",
         mimeType: 'text/plain'
     )
 }
