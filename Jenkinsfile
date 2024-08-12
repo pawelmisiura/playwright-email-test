@@ -16,10 +16,18 @@ pipeline {
             steps {
                 script {
                     // Run Playwright tests and capture output
-                    env.TEST_OUTPUT = sh(script: 'npx playwright test --reporter=list', returnStatus: true, returnStdout: true)
-                    
+                    def testResult = sh(script: 'npx playwright test --reporter=list', returnStatus: true, returnStdout: true)
+                    env.TEST_OUTPUT = testResult.toString()
+                    env.TEST_EXIT_CODE = testResult
+
                     // Print the captured output for debugging
                     echo "Test Output: ${env.TEST_OUTPUT}"
+                    echo "Test Exit Code: ${env.TEST_EXIT_CODE}"
+
+                    // Fail the build if tests failed
+                    if (env.TEST_EXIT_CODE != '0') {
+                        error "Tests failed with exit code ${env.TEST_EXIT_CODE}"
+                    }
                 }
             }
         }
@@ -28,7 +36,7 @@ pipeline {
     post {
         always {
             script {
-                if (env.TEST_OUTPUT != null) {
+                if (env.TEST_OUTPUT) {
                     writeFile file: 'test-output.txt', text: env.TEST_OUTPUT
                     archiveArtifacts artifacts: 'test-output.txt', fingerprint: true
                 } else {
@@ -38,7 +46,7 @@ pipeline {
         }
         failure {
             script {
-                if (env.TEST_OUTPUT != null) {
+                if (env.TEST_OUTPUT) {
                     def failedTests = parseFailedTests(env.TEST_OUTPUT)
                     def teamFailures = groupTestsByTeam(failedTests)
                     teamFailures.each { team, tests ->
@@ -84,7 +92,5 @@ def sendEmailToTeam(team, tests) {
     emailext (
         subject: "Test Failures for ${team}",
         body: "The following tests failed for ${team}:\n${tests.join('\n')}",
-        to: "pawelmisiura1@gmail.com",
+        to: "${team}@example.com",
         mimeType: 'text/plain'
-    )
-}
